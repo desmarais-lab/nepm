@@ -1,0 +1,13 @@
+Package: nepm
+Type: Package
+Title: A package for inferring and including network effects in time-series cross-section analysis.
+Version: 0.1.0
+Author: Bruce Desmarais, Rebekah Fyfe
+Maintainer: Bruce Desmarais <bdesmarais@psu.edu>
+Description: A package that includes functions for fitting, simulating from, and interpreting network effects panel models (NEPM).
+License: GPL2
+Encoding: UTF-8
+LazyData: true
+Imports: 
+    abess
+RoxygenNote: 7.2.3
