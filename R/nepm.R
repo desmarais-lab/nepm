@@ -135,7 +135,7 @@ nepm <- function(pdat,x_names,y,id,time,boot=F,nboot=500){
 
   net_eff_data <- make_network_effects(pdat,y,id,time)
 
-  x <- cbind(net_eff_data[,x_names],as.matrix(net_eff_data[,-(1:ncol(long_data))]))
+  x <- cbind(net_eff_data[,x_names],as.matrix(net_eff_data[,-(1:ncol(pdat))]))
 
   colnames(x)[1:length(x_names)] <- x_names
 
