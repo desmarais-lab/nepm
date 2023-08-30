@@ -1,7 +1,7 @@
 
 
 # function to add the network effect variables
-make_network_effects <- function(pdat,y,id,time){
+make_network_effects <- function(pdat,y,id,time,max_time_out){
   # pdat is a panel dataset
   # y is the character name of the numeric dependent variable
   # id is the cahracter name of the character unit/node id
@@ -11,18 +11,26 @@ make_network_effects <- function(pdat,y,id,time){
   node_id <- sort(unique(pdat[,id]))
   possible_ties <- rbind(t(combn(node_id,2)), t(combn(node_id,2))[,c(2,1)])
 
+  max_time <- max(table(pdat[,id]))
+  possible_senders <- names(table(pdat[,id]))[which(table(pdat[,id]) >=
+                                                      (max_time-max_time_out))]
+  possible_ties <- possible_ties[is.element(possible_ties[,1],possible_senders),]
+
   # make a matrix to store lagged tie sender y values
   tie_x <- matrix(0,nrow(pdat),nrow(possible_ties))
   utimes <- sort(unique(pdat[,time]))
 
+  # replace time with time sequence
+  tseq <- (1:length(utimes))[match(pdat[,time],utimes)]
+
   # loop over times and sender nodes to set tie effect variables
-  for(t in utimes){
+  for(t in 1:length(utimes)){
     for(v in node_id){
       # find the value to be stored
-      value <- pdat[which(pdat[,id]==v & pdat[,time] == (t-1)),y]
+      value <- pdat[which(pdat[,id]==v & tseq == (t-1)),y]
       # if v was not in data at t-1, set as NA
       if(length(value) < 1) value <- NA
-      tie_x[which(pdat[,time]==t),which(possible_ties[,1] == v)] <- value
+      tie_x[which(tseq==t),which(possible_ties[,1] == v)] <- value
     }
   }
 
@@ -47,6 +55,7 @@ make_network_effects <- function(pdat,y,id,time){
 #' @param time Character name of the numeric time variable in pdat.
 #' @param boot Indicator of whether to use bootstrapping to calculate uncertainty measures.
 #' @param nboot Integer, number of bootstrap iterations.
+#' @param max_time_out Integer, number of time periods a node can be out of the data in the beginning.
 #' @return list with a character vector of edges inferred, a dataframe that can be used to run nepm, and a formula that combines the edges and the covariates in the model.
 #' @export
 #' @examples
@@ -127,25 +136,30 @@ make_network_effects <- function(pdat,y,id,time){
 #'                               time = "time"))
 #'
 #' nepm_estimate <- lm(nepm_test$nepm_formula,data=nepm_test$new_pdat)
-nepm <- function(pdat,x_names,y,id,time,boot=F,nboot=500){
-  require(abess)
-  require(BMisc)
+nepm <- function(pdat,x_names,y,id,time,boot=F,nboot=500,max_time_out = 0){
+
+  set.seed(9202011)
 
   y_name <- y
 
-  net_eff_data <- make_network_effects(pdat,y,id,time)
+  net_eff_data <- make_network_effects(pdat,y,id,time,max_time_out)
 
   x <- cbind(net_eff_data[,x_names],as.matrix(net_eff_data[,-(1:ncol(pdat))]))
 
   colnames(x)[1:length(x_names)] <- x_names
 
-  y <- net_eff_data$y
+  x_sd <- apply(x,2,sd,na.rm=T)
+  x <- x[,which(x_sd > 0)]
 
-  yx <- na.omit(data.frame(y,x))
+  y <- net_eff_data[,y_name]
 
-  abess_res <- abess::abess(yx[,-1],yx[,1],always.include = 1:length(x_names))
+  yx <- data.frame(y,x)
 
-  var_names <- extract(abess_res)$support.vars
+  yx <- na.omit(yx)
+
+  abess_res <- abess::abess(yx[,-1],yx[,1],always.include = 1:length(x_names),tune.type="cv")
+
+  var_names <- abess::extract(abess_res)$support.vars
 
   edges <- var_names[!is.element(var_names,names(pdat))]
 
@@ -154,6 +168,83 @@ nepm <- function(pdat,x_names,y,id,time,boot=F,nboot=500){
 
 }
 
+
+#' A function to compare forecast performance of nepm to lm
+#'
+#' @param pdat The panel dataset as a dataframe.
+#' @param x_names Character vector giving the names of the covariates. Should be column names in pdat.
+#' @param y Character name of the dependent variable in pdat.
+#' @param id Character name of the unit/node id in pdat. Should be a character variable.
+#' @param time Character name of the numeric time variable in pdat.
+#' @param boot Indicator of whether to use bootstrapping to calculate uncertainty measures.
+#' @param nboot Integer, number of bootstrap iterations.
+#' @param max_time_out Integer, number of time periods a node can be out of the data in the beginning.
+#' @param start_tim Integer, the time period at which to start the forecasting experiment. Defaults to half the time points.
+#' @return list with a character vector of edges inferred, a dataframe that can be used to run nepm, and a formula that combines the edges and the covariates in the model.
+#' @export
+forecast_comparison <- function(pdat,x_names,y,id,time,boot=F,nboot=500,
+                                max_time_out = 0,start_time=NULL){
+
+  utimes <- sort(unique(pdat[,time]))
+
+  if(is.null(start_time)) start_time <- utimes[ceiling(length(utimes)/2)]
+
+  y_name <- y
+
+  net_eff_data <- make_network_effects(pdat,y,id,time,max_time_out)
+
+  x <- cbind(net_eff_data[,x_names],as.matrix(net_eff_data[,-(1:ncol(pdat))]))
+
+  colnames(x)[1:length(x_names)] <- x_names
+
+  x_sd <- apply(x,2,sd,na.rm=T)
+  x <- x[,which(x_sd > 0)]
+
+  y <- net_eff_data[,y_name]
+
+  tyx <- data.frame(t=net_eff_data[,time],y,x)
+
+  tyx <- na.omit(tyx)
+
+  test_times <- utimes[which(utimes >= start_time)]
+
+  mae_nepm <- NULL
+  mae_lm <- NULL
+
+  for(t in test_times){
+
+    set.seed(9202011)
+
+    tyx_train <- tyx[which(tyx$t < t),]
+    tyx_test <- tyx[which(tyx$t==t),]
+    zsd <- which(apply(tyx_train,2,sd)==0)
+
+    abess_res <- abess::abess(tyx_train[,-c(1,2,zsd)],tyx_train[,2],always.include = 1:length(x_names),tune.type="cv")
+
+    var_names <- abess::extract(abess_res)$support.vars
+
+    edges <- var_names[!is.element(var_names,names(pdat))]
+
+    nepm_formula <- as.formula(paste("y","~",paste(c(x_names,edges),collapse="+"),sep=""))
+
+    lm_formula <- as.formula(paste("y","~",paste(c(x_names),collapse="+"),sep=""))
+
+    fit_nepm <- lm(nepm_formula,data=tyx_train)
+    fit_lm <- lm(lm_formula,data=tyx_train)
+
+    pred_nepm <- predict(fit_nepm,newdata=tyx_test)
+    pred_lm <- predict(fit_lm,newdata=tyx_test)
+
+    y_test <- tyx_test[,2]
+
+    mae_nepm <- c(mae_nepm,mean(abs(y_test-pred_nepm)))
+    mae_lm <- c(mae_lm,mean(abs(y_test-pred_lm)))
+
+  }
+
+  list(fit_nepm = mae_nepm,fit_lm = mae_lm)
+
+}
 
 
 
