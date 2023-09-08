@@ -136,7 +136,7 @@ make_network_effects <- function(pdat,y,id,time,max_time_out){
 #'                               time = "time"))
 #'
 #' nepm_estimate <- lm(nepm_test$nepm_formula,data=nepm_test$new_pdat)
-nepm <- function(pdat,x_names,y,id,time,boot=F,nboot=500,max_time_out = 0){
+nepm <- function(pdat,x_names,y,id,time,max_time_out = 0,exclude_edges=NULL){
 
   set.seed(9202011)
 
@@ -157,7 +157,9 @@ nepm <- function(pdat,x_names,y,id,time,boot=F,nboot=500,max_time_out = 0){
 
   yx <- na.omit(yx)
 
-  abess_res <- abess::abess(yx[,-1],yx[,1],always.include = 1:length(x_names),tune.type="cv")
+  if(length(exclude_edges) > 0) yx <- yx[,-match(exclude_edges,colnames(yx))]
+
+  abess_res <- abess::abess(yx[,-1],yx[,1],support.size = 0:(length(unique(pdat[,id])) + length(x_names)))
 
   var_names <- abess::extract(abess_res)$support.vars
 
@@ -167,6 +169,8 @@ nepm <- function(pdat,x_names,y,id,time,boot=F,nboot=500,max_time_out = 0){
        nepm_formula = as.formula(paste(y_name,"~",paste(c(x_names,edges),collapse="+"),sep="")))
 
 }
+
+
 
 
 #' A function to compare forecast performance of nepm to lm
@@ -182,12 +186,12 @@ nepm <- function(pdat,x_names,y,id,time,boot=F,nboot=500,max_time_out = 0){
 #' @param start_tim Integer, the time period at which to start the forecasting experiment. Defaults to half the time points.
 #' @return list with a character vector of edges inferred, a dataframe that can be used to run nepm, and a formula that combines the edges and the covariates in the model.
 #' @export
-forecast_comparison <- function(pdat,x_names,y,id,time,boot=F,nboot=500,
+forecast_comparison <- function(pdat,x_names,y,id,time,
                                 max_time_out = 0,start_time=NULL){
 
   utimes <- sort(unique(pdat[,time]))
 
-  if(is.null(start_time)) start_time <- utimes[ceiling(length(utimes)/2)]
+  if(is.null(start_time)) start_time <- utimes[ceiling(length(utimes)*0.7)]
 
   y_name <- y
 
@@ -219,7 +223,7 @@ forecast_comparison <- function(pdat,x_names,y,id,time,boot=F,nboot=500,
     tyx_test <- tyx[which(tyx$t==t),]
     zsd <- which(apply(tyx_train,2,sd)==0)
 
-    abess_res <- abess::abess(tyx_train[,-c(1,2,zsd)],tyx_train[,2],always.include = 1:length(x_names),tune.type="cv")
+    abess_res <- abess::abess(tyx_train[,-c(1,2,zsd)],tyx_train[,2],support.size = 0:(length(unique(pdat[,id])) + length(x_names)))
 
     var_names <- abess::extract(abess_res)$support.vars
 
