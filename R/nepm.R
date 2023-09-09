@@ -53,9 +53,9 @@ make_network_effects <- function(pdat,y,id,time,max_time_out){
 #' @param y Character name of the dependent variable in pdat.
 #' @param id Character name of the unit/node id in pdat. Should be a character variable.
 #' @param time Character name of the numeric time variable in pdat.
-#' @param boot Indicator of whether to use bootstrapping to calculate uncertainty measures.
-#' @param nboot Integer, number of bootstrap iterations.
 #' @param max_time_out Integer, number of time periods a node can be out of the data in the beginning.
+#' @param test_edges Logical, indicator of whether to test the significance of the edges (as a block)
+#' @param nperm integer, number of permutations to use in the edge permutation test
 #' @return list with a character vector of edges inferred, a dataframe that can be used to run nepm, and a formula that combines the edges and the covariates in the model.
 #' @export
 #' @examples
@@ -136,7 +136,8 @@ make_network_effects <- function(pdat,y,id,time,max_time_out){
 #'                               time = "time"))
 #'
 #' nepm_estimate <- lm(nepm_test$nepm_formula,data=nepm_test$new_pdat)
-nepm <- function(pdat,x_names,y,id,time,max_time_out = 0,exclude_edges=NULL){
+nepm <- function(pdat,x_names,y,id,time,max_time_out = 0,
+                 test_edges=F,nperm=100){
 
   set.seed(9202011)
 
@@ -157,16 +158,32 @@ nepm <- function(pdat,x_names,y,id,time,max_time_out = 0,exclude_edges=NULL){
 
   yx <- na.omit(yx)
 
-  if(length(exclude_edges) > 0) yx <- yx[,-match(exclude_edges,colnames(yx))]
-
   abess_res <- abess::abess(yx[,-1],yx[,1],support.size = 0:(length(unique(pdat[,id])) + length(x_names)))
 
   var_names <- abess::extract(abess_res)$support.vars
 
   edges <- var_names[!is.element(var_names,names(pdat))]
 
-  list(edges=edges,new_pdat = net_eff_data[,union(names(pdat),edges)],
-       nepm_formula = as.formula(paste(y_name,"~",paste(c(x_names,edges),collapse="+"),sep="")))
+  if(test_edges){
+    null_edges <- NULL
+    for(i in 1:nperm){
+      y_p <- yx[,1]
+      all_x_p <- yx[sample(1:nrow(yx),nrow(yx)),-1]
+      abess_res_p <- abess::abess(all_x_p,y_p,support.size = 0:(length(unique(pdat[,id])) + length(x_names)))
+      var_names <- abess::extract(abess_res_p)$support.vars
+      edges_p <- var_names[!is.element(var_names,names(pdat))]
+      null_edges <- c(null_edges,length(edges_p))
+    }
+
+    return(list(edges=edges,new_pdat = net_eff_data[,union(names(pdat),edges)],
+         nepm_formula = as.formula(paste(y_name,"~",paste(c(x_names,edges),collapse="+"),sep="")),test_p=mean(null_edges >= length(edges))))
+
+  }
+
+  if(!test_edges){
+    return(list(edges=edges,new_pdat = net_eff_data[,union(names(pdat),edges)],
+       nepm_formula = as.formula(paste(y_name,"~",paste(c(x_names,edges),collapse="+"),sep=""))))
+  }
 
 }
 
