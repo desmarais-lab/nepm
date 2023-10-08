@@ -52,7 +52,8 @@ make_network_effects <- function(pdat,y,id,time,max_time_out){
 #' @param beta is a (k + 1) x 1 vector of regression coefficients
 #' @param gamma is a nties x 1 vector of tie effects
 #' @param ties is a nties x 2 matrix where the columns are in order of sender/receiver
-#' @param sigsq is the standard deviation of the error term
+#' @param nodes, character vector of all of the vertex names. ids in ties should match
+#' @param sig is the standard deviation of the error term
 #' @return numeric vector the same length as ytm1 corresponding to the simulated outcomes.
 #' @export
 #' @examples
@@ -107,14 +108,12 @@ make_network_effects <- function(pdat,y,id,time,max_time_out){
 #'                               time = "time"))
 #'
 #' nepm_estimate <- lm(nepm_test$nepm_formula,data=nepm_test$new_pdat)
-simulate_time_period <- function(ytm1,x,beta,gamma,ties,sig){
-
-  nodes <- length(ytm1)
+simulate_time_period <- function(ytm1,x,beta,gamma,nodes,ties,sig){
 
   # make adjacency matrix of network effects
   amat <- matrix(0,nodes,nodes)
-  rownames(amat) <- paste("n",1:nodes,sep="")
-  colnames(amat) <- paste("n",1:nodes,sep="")
+  rownames(amat) <- nodes
+  colnames(amat) <- nodes
   amat[ties] <- gamma
 
   amat <- t(amat)

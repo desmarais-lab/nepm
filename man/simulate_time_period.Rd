@@ -4,7 +4,7 @@
 \alias{simulate_time_period}
 \title{A function to simulate a single time period from nepr}
 \usage{
-simulate_time_period(ytm1, x, beta, gamma, ties, sig)
+simulate_time_period(ytm1, x, beta, gamma, nodes, ties, sig)
 }
 \arguments{
 \item{ytm1}{is a nodes x 1 vector of values of y in the previous time period}
@@ -15,9 +15,11 @@ simulate_time_period(ytm1, x, beta, gamma, ties, sig)
 
 \item{gamma}{is a nties x 1 vector of tie effects}
 
+\item{nodes, }{character vector of all of the vertex names. ids in ties should match}
+
 \item{ties}{is a nties x 2 matrix where the columns are in order of sender/receiver}
 
-\item{sigsq}{is the standard deviation of the error term}
+\item{sig}{is the standard deviation of the error term}
 }
 \value{
 numeric vector the same length as ytm1 corresponding to the simulated outcomes.
