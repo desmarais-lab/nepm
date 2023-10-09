@@ -111,7 +111,7 @@ make_network_effects <- function(pdat,y,id,time,max_time_out){
 simulate_time_period <- function(ytm1,x,beta,gamma,nodes,ties,sig){
 
   # make adjacency matrix of network effects
-  amat <- matrix(0,nodes,nodes)
+  amat <- matrix(0,length(nodes),length(nodes))
   rownames(amat) <- nodes
   colnames(amat) <- nodes
   amat[ties] <- gamma
