@@ -122,7 +122,7 @@ simulate_time_period <- function(ytm1,x,beta,gamma,nodes,ties,sig){
   net_effs <- amat%*%cbind(ytm1)
 
   # new y
-  cbind(1,x)%*%cbind(beta) + net_effs + rnorm(nodes,sd=sig)
+  cbind(1,x)%*%cbind(beta) + net_effs + rnorm(length(nodes),sd=sig)
 
 }
 
@@ -131,7 +131,7 @@ simulate_time_period <- function(ytm1,x,beta,gamma,nodes,ties,sig){
 
 
 #' A function to run NEPM
-#'
+#' @import SIS abess
 #' @param pdat The panel dataset as a dataframe.
 #' @param x_names Character vector giving the names of the covariates. Should be column names in pdat.
 #' @param y Character name of the dependent variable in pdat.
@@ -165,13 +165,39 @@ simulate_time_period <- function(ytm1,x,beta,gamma,nodes,ties,sig){
 #' # generate a covariate that is not time-varying (easy to make time varying)
 #' x <- rnorm(nodes)
 #'
+#' # generate new time period given previous time point
+#' sim_yt <- function(ytm1,x,beta,gamma,ties,sig){
+#'   # ytm1 is a nodes x 1 vector
+#'   # x is a nodes x k matrix where k is the number of covariates
+#'   # beta is a (k + 1) x 1 vector of regression coefficients
+#'   # gamma is a nties x 1 vector of tie effects
+#'   # ties is a nties x 2 matrix where the columns are in order of sender/receiver
+#'   # sigsq is the standard deviation of the error term
+#'
+#'   nodes <- length(ytm1)
+#'
+#'   # make adjacency matrix of network effects
+#'   amat <- matrix(0,nodes,nodes)
+#'   rownames(amat) <- paste("n",1:nodes,sep="")
+#'   colnames(amat) <- paste("n",1:nodes,sep="")
+#'   amat[ties] <- gamma
+#'
+#'   amat <- t(amat)
+#'
+#'   # network effect
+#'   net_effs <- amat%*%cbind(ytm1)
+#'
+#'   # new y
+#'   cbind(1,x)%*%cbind(beta) + net_effs + rnorm(nodes,sd=sig)
+#'
+#' }
 #'
 #'
 #' # matrix of simulated time periods
 #' ytm1 <- rnorm(nodes,sd=sig)
 #' panel_data <- NULL
 #' for(t in 1:(1000+times)){
-#'   yt <- simulate_time_period(ytm1,x,beta,gamma,ties,1)
+#'   yt <- sim_yt(ytm1,x,beta,gamma,ties,1)
 #'   panel_data <- rbind(panel_data,t(yt))
 #'   ytm1 <- yt
 #' }
@@ -216,11 +242,18 @@ nepm <- function(pdat,x_names,y,id,time,max_time_out = 0,
 
   yx <- na.omit(yx)
 
-  abess_res <- abess::abess(yx[,-1],yx[,1],support.size = 0:(length(unique(pdat[,id])) + length(x_names)))
+  abess_res <- abess::abess(yx[,-1],yx[,1],
+                            support.size = 0:(length(unique(pdat[,id])) + length(x_names)))
 
   var_names <- abess::extract(abess_res)$support.vars
 
   edges <- var_names[!is.element(var_names,names(pdat))]
+
+  yx <- na.omit(net_eff_data[,c(y_name,x_names,edges)])
+
+  screen_est <- SIS::SIS(as.matrix(yx[,-1]),yx[,1])
+
+  edges <- intersect(c(x_names,edges)[screen_est$ix],edges)
 
   if(test_edges){
     null_edges <- NULL
@@ -230,22 +263,25 @@ nepm <- function(pdat,x_names,y,id,time,max_time_out = 0,
       abess_res_p <- abess::abess(all_x_p,y_p,support.size = 0:(length(unique(pdat[,id])) + length(x_names)))
       var_names <- abess::extract(abess_res_p)$support.vars
       edges_p <- var_names[!is.element(var_names,names(pdat))]
+
+      screen_est <- SIS::SIS(as.matrix(all_x_p),y_p)
+
+      edges_p <- intersect(c(x_names,edges_p)[screen_est$ix],edges_p)
+
       null_edges <- c(null_edges,length(edges_p))
     }
 
     return(list(edges=edges,new_pdat = net_eff_data[,union(names(pdat),edges)],
-         nepm_formula = as.formula(paste(y_name,"~",paste(c(x_names,edges),collapse="+"),sep="")),test_p=mean(null_edges >= length(edges))))
+                nepm_formula = as.formula(paste(y_name,"~",paste(c(x_names,edges),collapse="+"),sep="")),test_p=mean(null_edges >= length(edges))))
 
   }
 
   if(!test_edges){
     return(list(edges=edges,new_pdat = net_eff_data[,union(names(pdat),edges)],
-       nepm_formula = as.formula(paste(y_name,"~",paste(c(x_names,edges),collapse="+"),sep=""))))
+                nepm_formula = as.formula(paste(y_name,"~",paste(c(x_names,edges),collapse="+"),sep="")),abess_res))
   }
 
 }
-
-
 
 
 #' A function to compare forecast performance of nepm to lm
@@ -303,6 +339,12 @@ forecast_comparison <- function(pdat,x_names,y,id,time,
     var_names <- abess::extract(abess_res)$support.vars
 
     edges <- var_names[!is.element(var_names,names(pdat))]
+
+    yx <- cbind(tyx_train[,2],tyx_train[,var_names])
+
+    screen_est <- SIS::SIS(as.matrix(yx[,-1]),yx[,1])
+
+    edges <- intersect(var_names[screen_est$ix],edges)
 
     nepm_formula <- as.formula(paste("y","~",paste(c(x_names,edges),collapse="+"),sep=""))
 

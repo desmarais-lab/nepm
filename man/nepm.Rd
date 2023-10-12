@@ -52,13 +52,39 @@ sig <- 1
 # generate a covariate that is not time-varying (easy to make time varying)
 x <- rnorm(nodes)
 
+# generate new time period given previous time point
+sim_yt <- function(ytm1,x,beta,gamma,ties,sig){
+  # ytm1 is a nodes x 1 vector
+  # x is a nodes x k matrix where k is the number of covariates
+  # beta is a (k + 1) x 1 vector of regression coefficients
+  # gamma is a nties x 1 vector of tie effects
+  # ties is a nties x 2 matrix where the columns are in order of sender/receiver
+  # sigsq is the standard deviation of the error term
+
+  nodes <- length(ytm1)
+
+  # make adjacency matrix of network effects
+  amat <- matrix(0,nodes,nodes)
+  rownames(amat) <- paste("n",1:nodes,sep="")
+  colnames(amat) <- paste("n",1:nodes,sep="")
+  amat[ties] <- gamma
+
+  amat <- t(amat)
+
+  # network effect
+  net_effs <- amat\%*\%cbind(ytm1)
+
+  # new y
+  cbind(1,x)\%*\%cbind(beta) + net_effs + rnorm(nodes,sd=sig)
+
+}
 
 
 # matrix of simulated time periods
 ytm1 <- rnorm(nodes,sd=sig)
 panel_data <- NULL
 for(t in 1:(1000+times)){
-  yt <- simulate_time_period(ytm1,x,beta,gamma,ties,1)
+  yt <- sim_yt(ytm1,x,beta,gamma,ties,1)
   panel_data <- rbind(panel_data,t(yt))
   ytm1 <- yt
 }

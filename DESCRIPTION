@@ -9,5 +9,5 @@ License: GPL2
 Encoding: UTF-8
 LazyData: true
 Imports: 
-    abess
+    abess, SIS
 RoxygenNote: 7.2.3
