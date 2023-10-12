@@ -284,6 +284,7 @@ nepm <- function(pdat,x_names,y,id,time,max_time_out = 0,
 }
 
 
+
 #' A function to compare forecast performance of nepm to lm
 #'
 #' @param pdat The panel dataset as a dataframe.
