@@ -11,7 +11,8 @@ forecast_comparison(
   id,
   time,
   max_time_out = 0,
-  start_time = NULL
+  start_time = NULL,
+  ncore = 2
 )
 }
 \arguments{
@@ -38,4 +39,81 @@ list with a character vector of edges inferred, a dataframe that can be used to 
 }
 \description{
 A function to compare forecast performance of nepm to lm
+}
+\examples{
+library(nepm)
+
+## generative process for NEPM
+# set some parameters
+times <- 50 # time periods in data
+nodes <- 50 # number of nodes
+nties <- 20 # number of ties
+
+# simulate some data
+set.seed(1001416)
+node_id <- paste("n",1:nodes,sep="")
+possible_ties <- rbind(t(combn(node_id,2)), t(combn(node_id,2))[,c(2,1)])
+ties <- possible_ties[sample(1:nrow(possible_ties),nties),] # select the ties
+
+# make model parameter values
+gamma <- .45 # set parameter to force stationarity
+beta <- c(.5,-.5)
+sig <- 1
+
+# generate a covariate that is not time-varying (easy to make time varying)
+x <- rnorm(nodes)
+
+# generate new time period given previous time point
+sim_yt <- function(ytm1,x,beta,gamma,ties,sig){
+  # ytm1 is a nodes x 1 vector
+  # x is a nodes x k matrix where k is the number of covariates
+  # beta is a (k + 1) x 1 vector of regression coefficients
+  # gamma is a nties x 1 vector of tie effects
+  # ties is a nties x 2 matrix where the columns are in order of sender/receiver
+  # sigsq is the standard deviation of the error term
+
+  nodes <- length(ytm1)
+
+  # make adjacency matrix of network effects
+  amat <- matrix(0,nodes,nodes)
+  rownames(amat) <- paste("n",1:nodes,sep="")
+  colnames(amat) <- paste("n",1:nodes,sep="")
+  amat[ties] <- gamma
+
+  amat <- t(amat)
+
+  # network effect
+  net_effs <- amat\%*\%cbind(ytm1)
+
+  # new y
+  cbind(1,x)\%*\%cbind(beta) + net_effs + rnorm(nodes,sd=sig)
+
+}
+
+
+# matrix of simulated time periods
+ytm1 <- rnorm(nodes,sd=sig)
+panel_data <- NULL
+for(t in 1:(1000+times)){
+  yt <- sim_yt(ytm1,x,beta,gamma,ties,1)
+  panel_data <- rbind(panel_data,t(yt))
+  ytm1 <- yt
+}
+
+# take last time steps as final data
+panel_data <- panel_data[1001:(1000+times),]
+
+# long data
+long_data <- NULL
+for(i in 1:ncol(panel_data)){
+  dati <- data.frame(id = rep(paste("n",i,sep=""),nrow(panel_data)),y=panel_data[,i],
+                     time=1:nrow(panel_data),x=x[i])
+  long_data <- rbind(long_data,dati)
+
+}
+
+fit_result <- forecast_comparison(long_data,x_names="x",
+                              y= "y",
+                              id ="id",
+                              time = "time")
 }
