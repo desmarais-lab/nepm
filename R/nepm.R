@@ -608,6 +608,9 @@ forecast_comparison <- function(pdat,x_names,y,id,time,
 
   tyx <- data.frame(t=net_eff_data[,time],id = net_eff_data[,id],y,x)
 
+  names(tyx)[2] <- id
+  names(tyx)[3] <- y_name
+
   tyx <- na.omit(tyx)
 
   test_times <- utimes[which(utimes >= start_time)]
@@ -631,7 +634,6 @@ forecast_comparison <- function(pdat,x_names,y,id,time,
 
     yx <- cbind(tyx_train[,3],tyx_train[,var_names])
 
-
     if(length(edges) > 0){
       boot_iter <- 80
       boot_res <- NULL
@@ -641,7 +643,6 @@ forecast_comparison <- function(pdat,x_names,y,id,time,
       doParallel::registerDoParallel(cl)
 
       `%dorng%` <- doRNG::`%dorng%`
-
 
       boot_res <- foreach::foreach(i = 1:boot_iter,.options.RNG=9202011) %dorng% {
         boot_id <- NULL
@@ -669,9 +670,9 @@ forecast_comparison <- function(pdat,x_names,y,id,time,
 
     }
 
-    nepm_formula <- as.formula(paste("y","~",paste(c(x_names,edges),collapse="+"),sep=""))
+    nepm_formula <- as.formula(paste(y_name,"~",paste(c(x_names,edges),collapse="+"),sep=""))
 
-    lm_formula <- as.formula(paste("y","~",paste(c(x_names),collapse="+"),sep=""))
+    lm_formula <- as.formula(paste(y_name,"~",paste(c(x_names),collapse="+"),sep=""))
 
     fit_nepm <- lm(nepm_formula,data=tyx_train)
     fit_lm <- lm(lm_formula,data=tyx_train)
