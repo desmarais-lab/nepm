@@ -9,6 +9,8 @@ make_network_effects <- function(pdat,y,id,time,max_time_out){
 
   # list unique nodes and possible ties among them
   node_id <- sort(unique(pdat[,id]))
+  utimes <- sort(unique(pdat[,time]))
+
   possible_ties <- rbind(t(combn(node_id,2)), t(combn(node_id,2))[,c(2,1)])
 
   max_time <- max(table(pdat[,id]))
@@ -131,7 +133,7 @@ simulate_time_period <- function(ytm1,x,beta,gamma,nodes,ties,sig){
 
 
 #' A function to run NEPM
-#' @import abess foreach doParallel doRNG
+#' @import abess foreach doParallel doRNG DoubleML glmnet
 #' @param pdat The panel dataset as a dataframe.
 #' @param x_names Character vector giving the names of the covariates. Should be column names in pdat.
 #' @param y Character name of the dependent variable in pdat.
@@ -223,7 +225,7 @@ simulate_time_period <- function(ytm1,x,beta,gamma,nodes,ties,sig){
 #'                               time = "time"))
 #'
 #' nepm_estimate <- lm(nepm_sim$nepm_formula,data=nepm_sim$new_pdat)
-nepm <- function(pdat,x_names,y,id,time,max_time_out = 0,ncore=2){
+nepm <- function(pdat,x_names,main_covs=x_names,y,id,time,max_time_out = 0,ncore=2){
 
   y_name <- y
 
@@ -233,11 +235,11 @@ nepm <- function(pdat,x_names,y,id,time,max_time_out = 0,ncore=2){
 
   colnames(x)[1:length(x_names)] <- x_names
 
+  y <- net_eff_data[,y_name]
+  yx_full <- data.frame(y,x)
+
   x_sd <- apply(x,2,sd,na.rm=T)
   x <- x[,which(x_sd > 0)]
-
-  y <- net_eff_data[,y_name]
-
   yx <- data.frame(y,x)
 
   yx <- na.omit(yx)
@@ -246,8 +248,14 @@ nepm <- function(pdat,x_names,y,id,time,max_time_out = 0,ncore=2){
 
   yx <- yx[,yx_sd > 0]
 
-  abess_res <- abess::abess(yx[,-1],yx[,1],
-                            support.size = 0:(length(unique(pdat[,id])) + length(x_names)))
+  #ridge_cv <- glmnet::cv.glmnet(as.matrix(yx[,-1]),yx[,1], alpha = 0)
+
+  # Best lambda value
+  #best_lambda <- ridge_cv$lambda.min
+
+  abess_res <- abess::abess(yx[,-1],yx[,1])
+                            #support.size = 0:(length(unique(pdat[,id])) + length(x_names)))
+                            #lambda)
 
   var_names <- abess::extract(abess_res)$support.vars
 
@@ -255,52 +263,46 @@ nepm <- function(pdat,x_names,y,id,time,max_time_out = 0,ncore=2){
 
   yx_id <- na.omit(net_eff_data[,c(id,y_name,x_names,edges)])
 
+  obj_dml_data = DoubleML::DoubleMLData$new(na.omit(yx_full[,c("y",x_names,edges)]),
+                                            y_col = "y", d_cols = main_covs)
+
+  learner = mlr3::lrn("regr.cv_glmnet")
+  ml_l_sim = learner$clone()
+  ml_m_sim = learner$clone()
+
+
+  obj_dml_plr_sim = DoubleML::DoubleMLPLR$new(obj_dml_data, ml_l = ml_l_sim, ml_m = ml_m_sim)
+  obj_dml_plr_sim$fit(store_models=T)
+
   if(length(edges) > 0){
-    boot_iter <- 80
-    boot_res <- NULL
-    uid <- unique(yx_id[,id])
 
-    cl <- parallel::makeCluster(ncore)
-    doParallel::registerDoParallel(cl)
-
-    `%dorng%` <- doRNG::`%dorng%`
-
-
-    boot_res <- foreach::foreach(i = 1:boot_iter,.options.RNG=9202011) %dorng% {
-      boot_id <- NULL
-      for(u in uid){
-        row_u <- which(yx_id[,id]==u)
-        boot_id <- c(boot_id,sample(row_u,length(row_u),rep=T))
+    n_est <- length(obj_dml_plr_sim$models$ml_l[[1]][[1]])
+    n_vars <- length(obj_dml_plr_sim$models$ml_l)
+    all_nz <- NULL
+    for(i in 1:n_est){
+      for(j in 1:n_vars){
+        beta_param <- coef(obj_dml_plr_sim$models$ml_l[[j]][[1]][[i]]$model)
+        beta_names <- row.names(beta_param)
+        beta_param <- as.numeric(beta_param)
+        beta_nz <- (beta_names[beta_param != 0])[-1]
+        all_nz <- c(all_nz,beta_nz)
       }
-      yx_id_b <- yx_id[boot_id,]
-      x_b <- as.matrix(yx_id_b[,c(x_names,edges)])
-      y_b <- yx_id_b[,y_name]
-      cv.fit <- glmnet::cv.glmnet(x_b,y_b)
-      eff_b <- rownames(coef(cv.fit, s = "lambda.min"))[as.numeric(coef(cv.fit, s = "lambda.min")) !=0]
-      eff_b
     }
 
-    parallel::stopCluster(cl)
-
-    boot_res <- c(unlist(boot_res))
-
-    eff_freq <- table(boot_res)
-
-    est_edges <- names(eff_freq[which(eff_freq==boot_iter)])
-
-    edges <- intersect(est_edges,edges)
+    nz_ests <- table(all_nz)
+    edges <- nz_ests[is.element(names(nz_ests),edges)]
 
   }
 
-  return(list(edges=edges,new_pdat = net_eff_data[,union(names(pdat),edges)],
+  return(list(edges=edges,new_pdat = net_eff_data[,union(names(pdat),names(edges))],
               nepm_formula = as.formula(paste(y_name,"~",
-                                              paste(c(x_names,edges),collapse="+")
+                                              paste(c(x_names,names(edges)),collapse="+")
                                               ,sep="")),
               x_names=x_names,
               y=y_name,
               id=id,
               time=time,
-              max_time_out=max_time_out))
+              max_time_out=max_time_out,doubleML_est = obj_dml_plr_sim))
 
 }
 
