@@ -284,13 +284,15 @@ nepm <- function(pdat,x_names,main_covs=x_names,y,id,time,max_time_out = 0,ncore
         beta_param <- coef(obj_dml_plr_sim$models$ml_l[[j]][[1]][[i]]$model)
         beta_names <- row.names(beta_param)
         beta_param <- as.numeric(beta_param)
-        beta_nz <- (beta_names[beta_param != 0])[-1]
+        beta_nm <- (beta_names[beta_param != 0])[-1]
+        beta_nz <- (beta_param[beta_param != 0])[-1]
+        names(beta_nz) <- beta_nm
         all_nz <- c(all_nz,beta_nz)
       }
     }
 
-    nz_ests <- table(all_nz)
-    edges <- nz_ests[is.element(names(nz_ests),edges)]
+    #nz_ests <- table(all_nz)
+    edges <-all_nz[is.element(names(all_nz),edges)]
 
   }
 
