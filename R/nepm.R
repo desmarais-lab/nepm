@@ -133,7 +133,7 @@ simulate_time_period <- function(ytm1,x,beta,gamma,nodes,ties,sig){
 
 
 #' A function to run NEPM
-#' @import abess foreach doParallel doRNG DoubleML glmnet
+#' @import abess foreach doParallel doRNG DoubleML glmnet mlr3extralearners
 #' @param pdat The panel dataset as a dataframe.
 #' @param x_names Character vector giving the names of the covariates. Should be column names in pdat.
 #' @param y Character name of the dependent variable in pdat.
@@ -259,14 +259,14 @@ nepm <- function(pdat,x_names,main_covs=x_names,y,id,time,max_time_out = 0,ncore
 
   var_names <- abess::extract(abess_res)$support.vars
 
-  edges <- var_names[!is.element(var_names,names(pdat))]
+  edges <- names(yx)[!is.element(names(yx),names(pdat))]
 
   yx_id <- na.omit(net_eff_data[,c(id,y_name,x_names,edges)])
 
   obj_dml_data = DoubleML::DoubleMLData$new(na.omit(yx_full[,c("y",x_names,edges)]),
                                             y_col = "y", d_cols = main_covs)
 
-  learner = mlr3::lrn("regr.cv_glmnet")
+  learner = mlr3extralearners::lrn("regr.abess")
   ml_l_sim = learner$clone()
   ml_m_sim = learner$clone()
 
@@ -282,17 +282,19 @@ nepm <- function(pdat,x_names,main_covs=x_names,y,id,time,max_time_out = 0,ncore
     for(i in 1:n_est){
       for(j in 1:n_vars){
         beta_param <- coef(obj_dml_plr_sim$models$ml_l[[j]][[1]][[i]]$model)
-        beta_names <- row.names(beta_param)
-        beta_param <- as.numeric(beta_param)
-        beta_nm <- (beta_names[beta_param != 0])[-1]
-        beta_nz <- (beta_param[beta_param != 0])[-1]
-        names(beta_nz) <- beta_nm
-        all_nz <- c(all_nz,beta_nz)
+        modij <- obj_dml_plr_sim$models$ml_l[[j]][[1]][[i]]$model
+        bsij <- modij$best.size
+        beta_param <- coef(modij,support.size=bsij,sparse=F)
+        beta_names <- row.names(beta_param)[which(beta_param!=0)]
+        beta_param <- as.numeric(beta_param[which(beta_param!=0)])
+        names(beta_param) <- beta_names
+        all_nz <- c(all_nz,beta_names)
       }
     }
 
-    #nz_ests <- table(all_nz)
+    nz_ests <- table(all_nz)
     edges <-all_nz[is.element(names(all_nz),edges)]
+
 
   }
 
