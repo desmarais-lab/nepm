@@ -260,6 +260,7 @@ nepm <- function(pdat,x_names,main_covs=x_names,y,id,time,max_time_out = 0,ncore
   var_names <- abess::extract(abess_res)$support.vars
 
   edges <- names(yx)[!is.element(names(yx),names(pdat))]
+  edges <- edges[is.element(edges,names(net_eff_data))]
 
   yx_id <- na.omit(net_eff_data[,c(id,y_name,x_names,edges)])
 
