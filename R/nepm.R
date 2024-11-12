@@ -267,7 +267,7 @@ nepm <- function(pdat,x_names,main_covs=x_names,y,id,time,max_time_out = 0,ncore
   obj_dml_data = DoubleML::DoubleMLData$new(na.omit(yx_full[,c("y",x_names,edges)]),
                                             y_col = "y", d_cols = main_covs)
 
-  learner = mlr3extralearners::lrn("regr.abess")
+  learner = mlr3extralearners::lrn("regr.abess",normalize=0)
   ml_l_sim = learner$clone()
   ml_m_sim = learner$clone()
 
